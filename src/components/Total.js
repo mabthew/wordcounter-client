@@ -1,40 +1,93 @@
 import React, { Component } from 'react';
+import { w3cwebsocket as W3CWebSocket } from "websocket";
+
+const client = new W3CWebSocket('ws://127.0.0.1:8000');
 
 export default class Total extends Component {
     constructor(props) {
         super(props);
     
         this.state = {
-            count: 0,
-            time: Date.now(),
+            words: {},
+            total: 0,
+            totalUnique: 0,
+            mostUsedWords:  [null, null, null, null, null],
+            mostUsedWordCounts: [0,0,0,0,0],
         }
-        this.getCount = this.getCount.bind(this);
+
+        this.extractMetrics = this.extractMetrics.bind(this);
     }
 
+    extractMetrics(string) {
 
-    getCount() {
-        var url = "http://localhost:3001/total"
-        fetch(url)
-            .then(response => response.json())
-            .then(data => this.setState({count: data}));
+        var newWords = string.split(" ");
+        if (newWords[0] === '') {
+            newWords.shift();
+        } 
+
+        var total = this.state.total;
+        total += newWords.length;
+
+        var mostUsedWords = this.state.mostUsedWords;
+        var mostUsedWordCounts = this.state.mostUsedWordCounts;
+        var words = this.state.words;
+
+        newWords.forEach(function(w) {
+            if (!words[w]) {
+                words[w] = 0;
+            }
+            words[w] += 1;
+
+            var i = 4;
+
+            if (mostUsedWords.includes(w)) {
+                i = mostUsedWords.indexOf(w)
+            } 
+            if (words[w] > mostUsedWordCounts[i]) {
+                mostUsedWords[i] = w;
+                mostUsedWordCounts[i] = words[w];
+                
+                while (mostUsedWordCounts[i] > mostUsedWordCounts[i-1] && i >= 1) {
+                    // swap
+                    var tempWord = mostUsedWords[i];
+                    var tempWordCount = mostUsedWordCounts[i];
+    
+                    mostUsedWords[i] = mostUsedWords[i-1];
+                    mostUsedWordCounts[i] = mostUsedWordCounts[i-1];
+
+                    mostUsedWords[i-1] = tempWord;
+                    mostUsedWordCounts[i-1] = tempWordCount;
+    
+                    i--;   
+                }
+            }
+        });
+        
+        var totalUnique = Object.keys(words).length;
+
+        this.setState({words, total, totalUnique, mostUsedWords,  mostUsedWordCounts});
     }
 
     componentDidMount() {
-        this.interval = setInterval(() => this.getCount(), 500);
-        this.getCount();
-      }
-      componentWillUnmount() {
-        clearInterval(this.interval);
-      }
+        client.onopen = () => {
+          console.log('WebSocket Client Connected');
+        };
+        client.onmessage = (message) => {  
+            this.extractMetrics(message.data)
+        };
+    }
 
-    render() {
-        if (this.state.count === 0) {
-            this.getCount();
-        }
-       
+    render() {       
         return (
             <div>
-                {this.state.count}
+                Total unique words: {this.state.totalUnique}
+                <br></br>
+                Total words: {this.state.total}
+                <br></br>
+                Most used words: 
+                    {this.state.mostUsedWords.map((word,index) => 
+                        <div key={index}>{word} {!word ? null : ": "  + this.state.mostUsedWordCounts[index]}</div>
+                    )}
              </div>
         );
     }
